@@ -40,7 +40,7 @@ def solve(level, steplimit):
                     new_steps = steps
                 q.append((new_state, (new_forbidden_move+1) + 5*new_steps + 256*(i + 4 * moves)))
                 visited.add(new_state)
-                if len(visited) > 10000000:
+                if len(visited) > 20000000:
                     visited.pop()
             except Cant:
                 continue
@@ -84,10 +84,12 @@ def allocate_possible_moves_array():
     return moves_to_check
 
 def read_flags(level):
-    flag_positions = []
+    flag_positions = dict()
+    flagno = 0
     for i in range(0, len(level), 3):
         if level[i+1:i+2:] == 'P':
-            flag_positions.append(i//3)
+            flag_positions[i//3] = flagno
+            flagno += 1
     return flag_positions
 
 def read_pawn(level):
@@ -106,15 +108,13 @@ def read_state(level):
 def write_state(state, flag_positions):
     pawn_x, pawn_y = get_pawn_position(state)
     level = ""
-    flags = 0
     for i in range(70):
         x = i % 10
         y = i // 10
         piece = ' '
         if i in flag_positions:
-            if not flag_is_captured(state, flags):
+            if not flag_is_captured(state, flag_positions[i]):
                 piece = 'P'
-            flags += 1
         if x == pawn_x and y == pawn_y:
             piece = 'O'
         if has_block(x, y, state):
@@ -144,18 +144,14 @@ def capture_flag(state, flag, flag_positions):
     return new_state
 
 def too_far(state, flag_positions, remaining_steps):
-    flagpos = -1
-    for i in range(len(flag_positions)):
-        if not flag_is_captured(state, i):
-            if flagpos != -1:
-                return False
-            flagpos = flag_positions[i]
-    if flagpos == -1:
-        return False
     index = state % 70
     x, y = index % 10, index // 10
-    flagx, flagy = flagpos % 10, flagpos // 10
-    return abs(flagx - x) + abs(flagy - y) > remaining_steps
+    for flagpos, flagno in flag_positions.items():
+        if not flag_is_captured(state, flagno):
+            flagx, flagy = flagpos % 10, flagpos // 10
+            if abs(flagx - x) + abs(flagy - y) > remaining_steps:
+                return True
+    return False
 
 class Cant(Exception):
     pass
@@ -171,7 +167,7 @@ def move(state, x, y, code, flag_positions, allow_step):
         # Take a step
         next_index = next_x + next_y*10
         if next_index in flag_positions:
-            state = capture_flag(state, flag_positions.index(next_index), flag_positions)
+            state = capture_flag(state, flag_positions[next_index], flag_positions)
         else:
             if blockstate & (1 << (x + y*10)): # has_block(x, y, state) inlined
                 forbidden_move = (2 - code) if horizontal_move else (4 - code) # don't step back unless just captured a flag
@@ -198,7 +194,10 @@ def play(level, moves):
     time.sleep(1)
     for i in range(len(moves)):
         x, y = get_pawn_position(state)
-        state, step, _ = move(state, x, y, moves[i], flag_positions)
+        try:
+            state, step, _ = move(state, x, y, moves[i], flag_positions, True)
+        except Solved:
+            return
         if step:
             steps += 1
         time.sleep(0.8)
@@ -234,4 +233,5 @@ if __name__ == "__main__":
     #             "      [ ][ ][ ][ ]      [ ][O]"
     #         )
     #play(level, [2, 1, 2, 1, 1, 1, 1, 1, 1, 2, 1, 1, 2, 0, 2, 3, 2, 2, 2, 1, 1, 2, 2, 2, 2, 2, 2, 2])
-    solve(level, 23)
+    play(level, [1, 2, 2, 0, 1, 1, 0, 1, 1, 1, 3, 1, 1, 2, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3])
+    #solve(level, 23)
