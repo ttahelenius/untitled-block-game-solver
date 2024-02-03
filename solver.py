@@ -377,7 +377,7 @@ def move(state, x, y, code, flag_positions, remaining_steps):
             raise Cant
         # Take a step
         next_index = next_x + next_y*10
-        if next_index in flag_positions:
+        if next_index in flag_positions and not flag_is_captured(state, flag_positions[next_index]):
             state = capture_flag(state, flag_positions[next_index], flag_positions)
         else:
             if blockstate & (1 << (x + y*10)): # has_block(x, y, state) inlined
