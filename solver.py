@@ -51,8 +51,6 @@ def solve_bfs(level, steplimit):
                     new_steps = steps
                 q.append((new_state, (new_forbidden_move+1) + 5*new_steps + moves_startpos*(i + 4 * moves)))
                 visited.add(new_state)
-                #if len(visited) > 20000000:
-                #    visited.pop()
             except Cant:
                 continue
             except Solved:
@@ -108,7 +106,9 @@ def recursive_solve(state, i, steps, moves, moves_num, moves_left, steplimit, vi
             if accept_any and visited[new_state] == steps:
                 return None
             visited[new_state] = steps
-        elif len(visited) < 50000000:
+        #elif len(visited) < 50000000:
+        #    visited[new_state] = steps
+        else:
             visited[new_state] = steps
 
         if stepped:
@@ -144,40 +144,78 @@ def recursive_solve(state, i, steps, moves, moves_num, moves_left, steplimit, vi
         return None
     except Solved:
         return state, steps + 1, moves, moves_num
-    
 
-def solve_dfs2(level, steplimit):
+def solve_hybrid(level, steplimit, threshold):
+    from collections import deque
     import time
     flag_positions = read_flags(level)
     state = read_state(level)
+    moves_startpos = 5*(steplimit+1)
 
     start = time.time()
-    visited = dict()
+    visited = set()
+    q = deque()
+    q.append((state, 0))
+    maxsteps = 0
     moves_to_check = allocate_possible_moves_array()
 
-    moves = 0
-    steps = 0
-    index = state % 70              # get_pawn_position(state) inlined
-    x, y = index % 10, index // 10  #
-    for i in moves_to_check[x][y][0]:
-        res = recursive_solve2(state, i, steps, i + 4 * moves, 1, steplimit, visited, flag_positions, moves_to_check)
-        if res:
-            state = read_state(level)
-            solution = clean_solution(state, read_moves(res[2], res[3]), flag_positions, moves_to_check)
-            steps = 0
-            for i in range(len(solution)):
-                x, y = get_pawn_position(state)
-                try:
-                    state, step, _ = move(state, x, y, solution[i], flag_positions, 9999)
-                except Solved:
+    while len(q) > 0:
+        state, moves_steps_compressed = q.popleft()
+        steps_compressed = moves_steps_compressed % moves_startpos
+        moves = moves_steps_compressed // moves_startpos
+        forbidden_move = steps_compressed % 5
+        steps = steps_compressed // 5
+        index = state % 70              # get_pawn_position(state) inlined
+        x, y = index % 10, index // 10  #
+        if steps >= threshold:
+            print("Running DFS solver... Queue size:", len(q))
+            for i in moves_to_check[x][y][forbidden_move]:
+                res = hybrid_recursive_solve(state, i, steps, i + 4 * moves, steplimit, visited, flag_positions, moves_to_check)
+                if res:
                     print(write_state(res[0], flag_positions))
-                    print("Solved in", time.time() - start, "s,", steps, "steps:", solution)
+                    print("Solved in", time.time() - start, "s,", res[1], "steps:", read_solution(level, res[2]))
                     return
-                if step:
-                    steps += 1
+        else:
+            for i in moves_to_check[x][y][forbidden_move]:
+                try:
+                    remaining_steps = steplimit - steps
+                    new_state, stepped, new_forbidden_move = move(state, x, y, i, flag_positions, remaining_steps)
+                    if new_state in visited:
+                        continue
+                    if stepped:
+                        new_steps = steps + 1
+                        if new_steps > maxsteps:
+                            maxsteps = new_steps
+                            print("Checking", new_steps, "step solutions...", time.time() - start, "s elapsed")
+                            print("Visited:", len(visited), " Queue size:", len(q))
+                        # Flag too far:
+                        flag_too_far = False
+                        new_index = new_state % 70                      # get_pawn_position(state) inlined
+                        new_x, new_y = new_index % 10, new_index // 10  #
+                        for flagpos, flagno in flag_positions.items():
+                            if not (new_state // FLAG_STARTPOS) & (1 << flagno): # flag_is_captured(new_state, flagno) inlined
+                                flagx, flagy = flagpos % 10, flagpos // 10
+                                if abs(flagx - new_x) + abs(flagy - new_y) > remaining_steps - 1:
+                                    flag_too_far = True
+                                    break
+                        if flag_too_far:
+                            continue
+                    else:
+                        new_steps = steps
+                    q.append((new_state, (new_forbidden_move+1) + 5*new_steps + moves_startpos*(i + 4 * moves)))
+                    visited.add(new_state)
+                except Cant:
+                    continue
+                except Solved:
+                    if steps + 1 > maxsteps:
+                        print("Checking", steps + 1, "step solutions...", time.time() - start, "s elapsed")
+                        print("Visited:", len(visited), " Queue size:", len(q))
+                    print(write_state(state, flag_positions))
+                    print("Solved in", time.time() - start, "s,", steps+1, "steps:", read_solution(level, i + 4 * moves))
+                    return
     print("No solution exists ( with steps <=", steplimit, "); the check took", time.time() - start, "s")
 
-def recursive_solve2(state, i, steps, moves, moves_num, steplimit, visited, flag_positions, moves_to_check):
+def hybrid_recursive_solve(state, i, steps, moves, steplimit, visited, flag_positions, moves_to_check):
     try:
         index = state % 70              # get_pawn_position(state) inlined
         x, y = index % 10, index // 10  #
@@ -185,11 +223,7 @@ def recursive_solve2(state, i, steps, moves, moves_num, steplimit, visited, flag
         new_state, stepped, new_forbidden_move = move(state, x, y, i, flag_positions, remaining_steps)
 
         if new_state in visited:
-            if visited[new_state] <= steps:
-                return None
-            visited[new_state] = steps
-        elif len(visited) < 50000000:
-            visited[new_state] = steps
+            return None
 
         if stepped:
             new_steps = steps + 1
@@ -210,56 +244,15 @@ def recursive_solve2(state, i, steps, moves, moves_num, steplimit, visited, flag
             new_x, new_y = x, y
 
         for j in moves_to_check[new_x][new_y][new_forbidden_move+1]:
-            res = recursive_solve2(new_state, j, new_steps, j + 4 * moves, moves_num+1, steplimit, visited, flag_positions, moves_to_check)
+            res = hybrid_recursive_solve(new_state, j, new_steps, j + 4 * moves, steplimit, visited, flag_positions, moves_to_check)
             if res:
                 return res
         return None
     except Cant:
         return None
     except Solved:
-        return state, steps + 1, moves, moves_num
-    
-def clean_solution(initial_state, solution, flag_positions, moves_to_check):
-    was_step = []
-    state = initial_state
-    for i in range(len(solution)):
-        x, y = get_pawn_position(state)
-        try:
-            state, step, _ = move(state, x, y, solution[i], flag_positions, 9999)
-            was_step.append(step)
-        except Solved:
-            break
-    
-    return attempt_solution(initial_state, 0, solution, was_step, flag_positions, moves_to_check)
+        return state, steps + 1, moves
 
-def attempt_solution(old_state, i, solution, was_step, flag_positions, moves_to_check):
-    if i >= len(solution):
-        return None
-    x, y = get_pawn_position(old_state)
-    try:
-        new_state, step, forbidden_move = move(old_state, x, y, solution[i], flag_positions, 9999)
-        if step != was_step[i]:
-            return None
-
-        new_x, new_y = get_pawn_position(new_state)
-        if i < len(solution)-1 and solution[i+1] not in moves_to_check[new_x][new_y][forbidden_move+1]:
-            return None
-        
-        if not step:
-            # Try skipping this move
-            res = attempt_solution(old_state, i+1, solution, was_step, flag_positions, moves_to_check)
-            if res:
-                return res
-        
-        # Just proceed
-        res = attempt_solution(new_state, i+1, solution, was_step, flag_positions, moves_to_check)
-        if res:
-            return [solution[i]] + res
-        return None
-    except Cant:
-        return None
-    except Solved:
-        return [solution[i]]
     
 def read_solution(level, moves):
     # [X], [0, X], [0, 0, X] etc. all compress to the same moves value, brute-forcing the right one:
@@ -453,7 +446,7 @@ if __name__ == "__main__":
                 "   [ ]                  [ ]   "
                 "   [ ][ ][ ]      [ ][ ][O]   "
                 "                              "
-            ), 34
+            ), 30
     level3 = str(
                 " P [ ]               [ ]      "
                 "               [ ][ ]   [ ][ ]"
@@ -463,9 +456,9 @@ if __name__ == "__main__":
                 "[ ]            [ ]   [ ][ ]   "
                 "      [ ][ ][ ][ ]      [ ][O]"
             ), 19
-    level = level1
-    #play(level[0], [2, 1, 2, 1, 1, 1, 1, 1, 1, 2, 1, 1, 2, 0, 2, 3, 2, 2, 2, 1, 1, 2, 2, 2, 2, 2, 2, 2])
+    level = level2
     #solve_bfs(level[0], steplimit=level[1])
-    solve_dfs(level[0], steplimit=level[1], movelimit=8, accept_any=False)
-    #solve_dfs2(level[0], steplimit=level[1])
-    #play(level[0], [1, 2, 0, 2, 0, 0, 0, 1, 1, 1, 1, 1, 1, 3, 1, 1, 2, 1, 1, 2, 2, 0, 2, 0, 2, 2, 2, 2, 0, 2, 0, 2, 2, 2, 2, 3, 3, 3])
+    #solve_dfs(level[0], steplimit=20, movelimit=20)
+    #solve_dfs(level[0], steplimit=level[1], movelimit=8, accept_any=False)
+    solve_hybrid(level[0], steplimit=level[1], threshold=22)
+    #play(level[0], [2, 2, 1, 0, 2, 0, 2, 1, 1, 1, 1, 1, 2, 2, 2, 0, 2, 0, 2, 3, 2, 2, 2, 1, 2, 3, 2, 2, 3, 2, 2, 3, 0, 1, 0, 0, 0, 3, 0, 0, 0, 1, 3, 3, 3, 2, 2])
