@@ -1,7 +1,7 @@
 class Solved(Exception):
     pass
 
-def solve(level, steplimit, threshold):
+def solve_hybrid(level: str, steplimit: int, threshold: int):
     from collections import deque
     import time
     flag_positions = read_flags(level)
@@ -9,8 +9,8 @@ def solve(level, steplimit, threshold):
     moves_startpos = 5*(steplimit+1)
 
     start = time.time()
-    visited = set()
-    q = deque()
+    visited: set[int] = set()
+    q: deque[tuple[int, int]] = deque()
     q.append((state, 0))
     maxsteps = 0
     moves_to_check = allocate_possible_moves_array()
@@ -25,7 +25,7 @@ def solve(level, steplimit, threshold):
         x, y = index % 10, index // 10  #
         if steps >= threshold:
             print("Running DFS solver... Queue size:", len(q))
-            res = recursive_solve(state, x, y, forbidden_move, steps, moves, steplimit, visited, flag_positions, moves_to_check)
+            res = dfs(state, x, y, forbidden_move, steps, moves, steplimit, visited, flag_positions, moves_to_check)
             if res:
                 print(write_state(res[0], flag_positions))
                 print("Solved in", time.time() - start, "s,", res[1], "steps:", read_solution(level, res[2]))
@@ -70,7 +70,9 @@ def solve(level, steplimit, threshold):
                     return
     print("No solution exists ( with steps <=", steplimit, "); the check took", time.time() - start, "s")
 
-def recursive_solve(state, x, y, forbidden_move, steps, moves, steplimit, visited, flag_positions, moves_to_check):
+def dfs(state: int, x: int, y: int, forbidden_move: int,
+                    steps: int, moves: int, steplimit: int, visited: set[int],
+                    flag_positions: dict[int, int], moves_to_check: list[list[list[list[int]]]]) -> tuple[int, int, int] | None:
     next_steps = []
     next_moves = []
     for i in moves_to_check[x][y][forbidden_move]:
@@ -106,17 +108,17 @@ def recursive_solve(state, x, y, forbidden_move, steps, moves, steplimit, visite
             return state, steps + 1, i + 4 * moves
 
     for (new_state, new_x, new_y, new_forbidden_move, moves) in next_steps:
-        res = recursive_solve(new_state, new_x, new_y, new_forbidden_move, steps + 1, moves, steplimit, visited, flag_positions, moves_to_check)
+        res = dfs(new_state, new_x, new_y, new_forbidden_move, steps + 1, moves, steplimit, visited, flag_positions, moves_to_check)
         if res:
             return res
     for (new_state, new_x, new_y, new_forbidden_move, moves) in next_moves:
-        res = recursive_solve(new_state, new_x, new_y, new_forbidden_move, steps, moves, steplimit, visited, flag_positions, moves_to_check)
+        res = dfs(new_state, new_x, new_y, new_forbidden_move, steps, moves, steplimit, visited, flag_positions, moves_to_check)
         if res:
             return res
     return None
 
     
-def read_solution(level, moves):
+def read_solution(level: str, moves: int) -> list[int] | None:
     # [X], [0, X], [0, 0, X] etc. all compress to the same moves value, brute-forcing the right one:
     candidate = read_moves(moves)
     moves_num = len(candidate)
@@ -127,7 +129,7 @@ def read_solution(level, moves):
         candidate = read_moves(moves, moves_num)
     return candidate
 
-def read_moves(moves, moves_num=None):
+def read_moves(moves: int, moves_num: int = -1) -> list[int]:
     rest = moves
     l = []
     while rest > 0:
@@ -135,12 +137,12 @@ def read_moves(moves, moves_num=None):
         l.append(move)
         rest //= 4
     l.reverse()
-    if moves_num == None:
+    if moves_num == -1:
         return l
     return [0]*(moves_num - len(l)) + l
 
-def allocate_possible_moves_array():
-    moves_to_check = [[0 for _ in range(7)] for _ in range(10)]
+def allocate_possible_moves_array() -> list[list[list[list[int]]]]:
+    moves_to_check: list[list[list[list[int]]]] = [[[[0]] for _ in range(7)] for _ in range(10)]
     for i in range(10):
         for j in range(7):
             if i == 0:
@@ -159,7 +161,7 @@ def allocate_possible_moves_array():
     moves_to_check[9][6] = [[1,2], [1,2], [2], [1], [1,2]]
     return moves_to_check
 
-def read_flags(level):
+def read_flags(level: str) -> dict[int, int]:
     flag_positions = dict()
     flagno = 0
     for i in range(0, len(level), 3):
@@ -168,20 +170,20 @@ def read_flags(level):
             flagno += 1
     return flag_positions
 
-def read_pawn(level):
+def read_pawn(level: str) -> int:
     for i in range(0, len(level), 3):
         if level[i+1:i+2:] == 'O':
             return i//3
-    return None
+    raise Cant()
 
-def read_state(level):
+def read_state(level: str) -> int:
     blocks = 0
     for i in range(0, len(level), 3):
         if level[i:i+3:] in ['[ ]', '[P]', '[O]']:
             blocks += 1 << (i//3)
     return read_pawn(level) + blocks*70
 
-def write_state(state, flag_positions):
+def write_state(state: int, flag_positions: dict[int, int]) -> str:
     pawn_x, pawn_y = get_pawn_position(state)
     level = ""
     for i in range(70):
@@ -203,17 +205,17 @@ def write_state(state, flag_positions):
 
 FLAG_STARTPOS = 70*(1 << 70)
 
-def flag_is_captured(state, flag):
+def flag_is_captured(state: int, flag: int) -> int:
     return (state // FLAG_STARTPOS) & (1 << flag)
 
-def has_block(x, y, state):
+def has_block(x: int, y: int, state: int) -> int:
     return ((state // 70) % FLAG_STARTPOS) & (1 << (x + y*10))
 
-def get_pawn_position(state):
+def get_pawn_position(state: int) -> tuple[int, int]:
     index = state % 70
     return index % 10, index // 10
 
-def capture_flag(state, flag, flag_positions):
+def capture_flag(state: int, flag: int, flag_positions: dict[int, int]) -> int:
     new_state = state + FLAG_STARTPOS*(1 << flag)
     if new_state // FLAG_STARTPOS == (1 << len(flag_positions)) - 1:
         raise Solved
@@ -222,7 +224,7 @@ def capture_flag(state, flag, flag_positions):
 class Cant(Exception):
     pass
 
-def move(state, x, y, code, flag_positions, remaining_steps):
+def move(state: int, x: int, y: int, code: int, flag_positions: dict[int, int], remaining_steps: int) -> tuple[int, bool, int]:
     blockstate = (state // 70) % FLAG_STARTPOS
     horizontal_move = code == 0 or code == 2
     forbidden_move = -1
@@ -256,11 +258,13 @@ def move(state, x, y, code, flag_positions, remaining_steps):
             return new_state + 70*(1 << (x + y*10)), False, forbidden_move
     raise Cant
 
-def play(level, moves):
+def play(level_with_step_limit: tuple[str, int], moves: list[int]):
     import time
+    level = level_with_step_limit[0]
     flag_positions = read_flags(level)
     state = read_state(level)
     steps = 0
+    print(write_state(state, flag_positions))
     time.sleep(1)
     for i in range(len(moves)):
         x, y = get_pawn_position(state)
@@ -274,7 +278,7 @@ def play(level, moves):
         print("move n#", i+1, "step n#", steps)
         print(write_state(state, flag_positions))
 
-def verify_solution(level, moves):
+def verify_solution(level: str, moves: list[int]) -> bool:
     flag_positions = read_flags(level)
     state = read_state(level)
     steps = 0
@@ -290,6 +294,9 @@ def verify_solution(level, moves):
         return True
     return False
 
+def solve(level_with_step_limit: tuple[str, int], threshold: int):
+    solve_hybrid(level=level_with_step_limit[0], steplimit=level_with_step_limit[1], threshold=threshold)
+
 if __name__ == "__main__":
     level1 = str(
                 "   [ ][ ][ ]   [ ][ ][ ]   [ ]"
@@ -301,15 +308,6 @@ if __name__ == "__main__":
                 "                     [P][ ][O]"
             ), 23
     level2 = str(
-                "                              "
-                "   [ ][ ][ ]      [ ][ ][ ]   "
-                "   [ ]                  [ ]   "
-                "             P  P             "
-                "   [ ]                  [ ]   "
-                "   [ ][ ][ ]      [ ][ ][O]   "
-                "                              "
-            ), 30
-    level3 = str(
                 " P [ ]               [ ]      "
                 "               [ ][ ]   [ ][ ]"
                 "                     [ ][ ]   "
@@ -318,6 +316,32 @@ if __name__ == "__main__":
                 "[ ]            [ ]   [ ][ ]   "
                 "      [ ][ ][ ][ ]      [ ][O]"
             ), 19
-    level = level2
-    solve(level[0], steplimit=level[1], threshold=22)
-    #play(level[0], [2, 2, 1, 0, 2, 0, 2, 1, 1, 1, 1, 1, 2, 2, 2, 0, 2, 0, 2, 3, 2, 2, 2, 1, 2, 3, 2, 2, 3, 2, 2, 3, 0, 1, 0, 0, 0, 3, 0, 0, 0, 3, 3, 3, 2, 2])
+    level3 = str(
+                "                              "
+                "   [ ][ ][ ]      [ ][ ][ ]   "
+                "   [ ]                  [ ]   "
+                "             P  P             "
+                "   [ ]                  [ ]   "
+                "   [ ][ ][ ]      [ ][ ][O]   "
+                "                              "
+            ), 30
+    level4 = str(
+                "[ ][ ][ ][ ][ ][ ][ ][ ][ ][ ]"
+                "[ ]                        [ ]"
+                "[ ]                        [ ]"
+                "[ ]       P  P  P  P       [ ]"
+                "[ ]                        [ ]"
+                "[ ]                        [ ]"
+                "[ ][ ][ ][ ][ ][ ][ ][ ][ ][O]"
+            ), 40
+
+    # Note: The followed time estimates correspond to a high end processor
+
+    solve(level1, threshold=8) # ~0.05 s
+    # play(level1, [1, 2, 2, 0, 1, 1, 0, 1, 1, 1, 3, 1, 1, 2, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3])
+
+    # solve(level2, threshold=15) # ~15 s
+    # play(level2, [2, 1, 2, 1, 1, 1, 1, 1, 1, 2, 1, 1, 2, 0, 2, 3, 2, 2, 2, 1, 1, 2, 2, 2, 2, 2, 2, 2])
+
+    # solve(level3, threshold=22) # ~7 min
+    # play(level3, [2, 2, 1, 0, 2, 0, 2, 1, 1, 1, 1, 1, 2, 2, 2, 0, 2, 0, 2, 3, 2, 2, 2, 1, 2, 3, 2, 2, 3, 2, 2, 3, 0, 1, 0, 0, 0, 3, 0, 0, 0, 3, 3, 3, 2, 2])
